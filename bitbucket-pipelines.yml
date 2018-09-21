@@ -1,0 +1,12 @@
+image: rust:1.29
+
+pipelines:
+  default:
+    - step:
+        script:
+          - rustup component add rustfmt-preview
+          - rustup component add clippy-preview
+          - cargo build -v
+          - cargo fmt -- --check
+          - touch ./src/main.rs && cargo clippy -- -D warnings
+          - cargo test -v
