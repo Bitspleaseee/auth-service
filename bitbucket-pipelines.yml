@@ -1,12 +1,25 @@
-image: rust:1.29
+image: rustlang/rust:nightly
 
 pipelines:
   default:
     - step:
+        name: Build project
+        artifacts:
+            - target/**
         script:
-          - rustup component add rustfmt-preview
-          - rustup component add clippy-preview
           - cargo build -v
-          - cargo fmt -- --check
-          - touch ./src/main.rs && cargo clippy -- -D warnings
-          - cargo test -v
+    - parallel:
+        - step:
+            name: Run tests
+            script:
+                - cargo test -v
+        - step:
+            name: Check formatting
+            script:
+                - rustup component add rustfmt-preview
+                - cargo fmt -v -- --check
+        - step:
+            name: Check clippy
+            script:
+                - rustup component add clippy-preview
+                - touch ./src/main.rs && cargo clippy -- -D warnings
