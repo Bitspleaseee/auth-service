@@ -5,3 +5,8 @@ authors = ["Ole Martin Ruud <barskern@outlook.com>"]
 edition = "2018"
 
 [dependencies]
+# Library to generate password hashes with salts
+#
+# A pepper must be added to the password before sending
+# it into the `pbkdf2_simple` function
+pbkdf2 = { version = "0.2" }
