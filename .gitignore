@@ -25,3 +25,5 @@
 
 # Environment variables
 .env
+
+logFile
