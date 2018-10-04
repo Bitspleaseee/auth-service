@@ -4,12 +4,21 @@ version = "0.1.0"
 authors = ["Ole Martin Ruud <barskern@outlook.com>"]
 edition = "2018"
 
+[[bin]]
+name = "auth_service"
+path = "src/bin/auth.rs"
+
+[lib]
+name = "auth_lib"
+path = "src/lib.rs"
 [dependencies]
-# Library to generate password hashes with salts
-#
-# A pepper must be added to the password before sending
-# it into the `pbkdf2_simple` function
 pbkdf2 = "0.2.3"
 serde_json = "1.0"
 diesel = { version = "1.3.0", features = ["mysql", "r2d2"] }
 dotenv = "0.9.0"
+rocket = "0.3.2"
+rocket_codegen ="0.3.2"
+rocket_contrib = { version = "0.3.2", default-features = false, features = ["tera_templates"] }
+r2d2 = "*"
+r2d2-diesel = "*"
+ 

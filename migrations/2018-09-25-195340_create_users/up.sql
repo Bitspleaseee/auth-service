@@ -6,7 +6,7 @@ CREATE TABLE users (
   password      TINYTEXT NOT NULL,
   banned        BOOLEAN DEFAULT FALSE,
   verified      BOOLEAN DEFAULT FALSE,
-  email_token   INT NOT NULL,
+  email_token   VARCHAR(255),
 
   PRIMARY KEY (id)
 );
