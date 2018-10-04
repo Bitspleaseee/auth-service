@@ -99,12 +99,54 @@ fn create_log(request : &str, username: &str) {
                     .open(file_name)
                     .unwrap();
 
-    if let Err(e) = writeln!(file, "[{}]: {} from user {}", time, request, username) {
+    if let Err(e) = writeln!(file, "[{}]: {} from user: {}", time, request, username) {
         eprintln!("Couldn't write to file: {}", e);
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct Person {
+    name: String,
+    age: u8,
+    phones: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Message {
+    #[serde(with = "json_string")]
+    sms: Sms,
+    uuid: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Sms {
+    source: u64,
+    destination: u64,
+    content: String,
+}
+
+fn typed_example() -> Result<(Person), Error> {
+    let data = r#"{
+                    "name": "John Doe",
+                    "age": 43,
+                    "phones": [
+                      "+44 1234567",
+                      "+44 2345678"
+                    ]
+                  }"#;
+
+    let p: Person = serde_json::from_str(data)?;
+
+    Ok(p)
+}
+
 fn main() {
+
+    match typed_example() {
+        Ok(res) => println!("{}", res.name),
+        Err(err) => println!("Error: {}", err),
+    }
+
 
     // Some variables
     let request : String;
