@@ -1,6 +1,13 @@
+#![feature(plugin)]
+#![plugin(tarpc_plugins)]
+
+mod pass_funcs;
+mod logging;
+
+#[macro_use]
+extern crate tarpc;
 extern crate serde;
 extern crate serde_json;
-extern crate pbkdf2;
 extern crate regex;
 extern crate chrono;
 
@@ -9,10 +16,6 @@ extern crate serde_derive;
 
 use regex::Regex;
 use serde_json::{Value,Error};
-use std::fs::OpenOptions;
-use std::io::prelude::*;
-use std::path::Path;
-use std::fs::File;
 
 #[derive(Serialize, Deserialize)]
 struct JsonData {
@@ -67,86 +70,31 @@ fn check_pass_requirement(input: &str) -> bool {
     return false;
 }
 
+use std::sync::mpsc;
+use std::thread;
+use tarpc::sync::{client, server};
+use tarpc::sync::client::ClientExt;
+use tarpc::util::{FirstSocketAddr, Never};
+
+service! {
+    rpc hello(name: String) -> String;
+}
+
+#[derive(Clone)]
+struct HelloServer;
+
+impl SyncService for HelloServer {
+    fn hello(&self, name: String) -> Result<String, Never> {
+        Ok(format!("Hello, {}!", name))
+    }
+}
 
 // Authentication part - TO DO
 fn authenticate() {
 
 }
 
-// Create log for login/register attempt
-fn create_log(request : &str, username: &str) {
-
-    let file_name = "logFile";
-
-    // Check if file exists
-    // If it doesn't, create it
-    let file_exists : bool = Path::new(file_name).exists();
-    if !file_exists {
-        if let Err(e) = File::create(file_name) {
-            eprintln!("Couldn't create file: {}", e);
-            return;
-        }
-    }
-
-    // Document the time
-    let now = chrono::Local::now();
-    let time = now.format("%Y-%m-%d %H:%M:%S").to_string();
-
-    // Write to file
-    let mut file = OpenOptions::new()
-                    .write(true)
-                    .append(true)
-                    .open(file_name)
-                    .unwrap();
-
-    if let Err(e) = writeln!(file, "[{}]: {} from user: {}", time, request, username) {
-        eprintln!("Couldn't write to file: {}", e);
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Person {
-    name: String,
-    age: u8,
-    phones: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Message {
-    #[serde(with = "json_string")]
-    sms: Sms,
-    uuid: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Sms {
-    source: u64,
-    destination: u64,
-    content: String,
-}
-
-fn typed_example() -> Result<(Person), Error> {
-    let data = r#"{
-                    "name": "John Doe",
-                    "age": 43,
-                    "phones": [
-                      "+44 1234567",
-                      "+44 2345678"
-                    ]
-                  }"#;
-
-    let p: Person = serde_json::from_str(data)?;
-
-    Ok(p)
-}
-
 fn main() {
-
-    match typed_example() {
-        Ok(res) => println!("{}", res.name),
-        Err(err) => println!("Error: {}", err),
-    }
-
 
     // Some variables
     let request : String;
@@ -183,7 +131,7 @@ fn main() {
     let password = strip_characters(password, r#"""#);
 
     // Add log info to the log file
-    create_log(&request, &username);
+    logging::create_log(&request, &username);
 
     // password - letters (lowercase AND uppercase) AND numbers, 8-50 characters
     // RegEx in Rust doesn't support look ahead assertion, so the RegEx would be very complicated
@@ -194,21 +142,25 @@ fn main() {
         return;
     }
 
-    // // Hash the password
-    match pbkdf2::pbkdf2_simple(&password, 1000) {
-        Ok(_hash) => {
-            hashed_password = _hash;
-        },
-        Err(_hash) => {
-            hashed_password = "".to_string();
-        }
-    }
+    // Hash the password
+    hashed_password = pass_funcs::hash_password(&password);
 
-    // // Check the password hash against the password provided
-    match pbkdf2::pbkdf2_check(&password, &hashed_password) {
-        Ok(_x) => println!("Password matches password hash"),
-        Err(_x) => println!("Password did not match password hash")
+    // Check if hashed password matches entered password
+    if pass_funcs::check_password(&password, &hashed_password) {
+        println!("Password matches");
+    } else {
+        println!("Password doesn't match");
     }
 
     println!("{} {} {} \n{}",request, username, password, hashed_password);
+
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let handle = HelloServer.listen("localhost:0", server::Options::default())
+            .unwrap();
+        tx.send(handle.addr()).unwrap();
+        handle.run();
+    });
+    let client = SyncClient::connect(rx.recv().unwrap(), client::Options::default()).unwrap();
+    println!("{}", client.hello("Mom".to_string()).unwrap());
 }
