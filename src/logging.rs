@@ -1,35 +1,50 @@
-use std::io::prelude::*;
-use std::fs::OpenOptions;
-use std::path::Path;
-use std::fs::File;
+use std::io;
 
-// Create log for login/register attempt
-pub fn create_log(request : &str, username: &str) {
+pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
+    let mut base_config = fern::Dispatch::new();
 
-    let file_name = "authLogFile";
+    base_config = match verbosity {
+        0 => base_config.level(log::LevelFilter::Info),
+        1 => base_config.level(log::LevelFilter::Debug),
+        _2_or_more => base_config.level(log::LevelFilter::Trace),
+    };
 
-    // Check if file exists
-    // If it doesn't, create it
-    let file_exists : bool = Path::new(file_name).exists();
-    if !file_exists {
-        if let Err(e) = File::create(file_name) {
-            eprintln!("Couldn't create file: {}", e);
-            return;
-        }
-    }
+    // Separate file config so we can include year, month and day in file logs
+    let file_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        }).chain(fern::log_file("auth-service.log")?);
 
-    // Document the time
-    let now = chrono::Local::now();
-    let time = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let stdout_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            // special format for debug messages coming from our own crate.
+            if record.level() > log::LevelFilter::Info && record.target() == "auth-service" {
+                out.finish(format_args!(
+                    "---\nDEBUG: {}: {}\n---",
+                    chrono::Local::now().format("%H:%M:%S"),
+                    message
+                ))
+            } else {
+                out.finish(format_args!(
+                    "[{}][{}][{}] {}",
+                    chrono::Local::now().format("%H:%M"),
+                    record.target(),
+                    record.level(),
+                    message
+                ))
+            }
+        }).chain(io::stdout());
 
-    // Write to file
-    let mut file = OpenOptions::new()
-                    .write(true)
-                    .append(true)
-                    .open(file_name)
-                    .unwrap();
+    base_config
+        .chain(file_config)
+        .chain(stdout_config)
+        .apply()?;
 
-    if let Err(e) = writeln!(file, "[{}]: {} from user: {}", time, request, username) {
-        eprintln!("Couldn't write to file: {}", e);
-    }
+    Ok(())
 }
