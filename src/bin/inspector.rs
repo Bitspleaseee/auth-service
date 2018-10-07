@@ -45,9 +45,9 @@ pub enum Cmd {
     Register,
 }
 
-impl TryFrom<&str> for Cmd {
+impl <'a> TryFrom<&'a str> for Cmd {
     type Error = Error;
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         use self::Cmd::*;
         match s {
             "auth" => Ok(Auth),
@@ -63,9 +63,9 @@ pub enum Mode {
     Main,
 }
 
-impl TryFrom<&str> for Mode {
+impl <'a> TryFrom<&'a str> for Mode {
     type Error = Error;
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         use self::Mode::*;
         match s {
             "main" => Ok(Main),

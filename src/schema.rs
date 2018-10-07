@@ -1,19 +1,18 @@
-#![allow(proc_macro_derive_resolution_fallback)]
 table! {
     roles (id) {
-        id -> Integer,
-        name -> Nullable<Varchar>,
+        id -> Unsigned<Integer>,
+        name -> Varchar,
     }
 }
 
 table! {
     users (id) {
-        id -> Integer,
+        id -> Unsigned<Integer>,
         email -> Varchar,
         username -> Varchar,
         password -> Tinytext,
-        banned -> Nullable<Bool>,
-        verified -> Nullable<Bool>,
+        banned -> Bool,
+        verified -> Bool,
         email_token -> Nullable<Varchar>,
     }
 }

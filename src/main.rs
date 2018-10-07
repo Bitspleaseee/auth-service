@@ -1,15 +1,18 @@
 #![feature(plugin)]
 #![plugin(tarpc_plugins)]
+#![allow(proc_macro_derive_resolution_fallback)]
 
 pub mod logging;
 pub mod service;
-
+pub mod db;
+pub mod schema;
+#[macro_use] extern crate diesel;
+extern crate dotenv;
 #[macro_use]
 extern crate tarpc;
 extern crate chrono;
 extern crate clap;
 extern crate regex;
-#[macro_use]
 extern crate serde_derive;
 extern crate serde;
 #[macro_use]
@@ -19,7 +22,7 @@ extern crate tokio_core;
 #[macro_use]
 extern crate failure;
 extern crate datatypes;
-
+extern crate pbkdf2;
 use tarpc::future::server::Options;
 use tarpc::util::FirstSocketAddr;
 use tokio_core::reactor;
