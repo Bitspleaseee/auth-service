@@ -60,24 +60,24 @@ Needs to return a vector which i dont know how to do.
 
 */
 
-pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new_password: &str, email_token: &str) -> IntResult<User>  {
+pub fn insert_user(conn: &MysqlConnection, user_name: String, new_email: String, new_password: String) -> IntResult<User>  {
     use schema::roles::dsl::*;
     use schema::users::dsl::*;
     let new_user = NewUser {
-        email: new_email.to_string(),
-        username: user_name.to_string(),
-        password: new_password.to_string(),
+        email: new_email,
+        username: user_name.clone(),
+        password: new_password,
     };
 
-    let inserted: Result<usize, ()> = 
     diesel::insert_into(users)
         .values(&new_user)
         .execute(conn)
         .context(IntErrorKind::QueryError)
         .map_err(|e| {
-            error!("Unable to insert user: {}", e)
-        });
-    let fetched_user = fetch_user(conn, user_name)?; 
+            error!("Unable to insert user: {}", e);
+            e
+        })?;
+    let fetched_user = fetch_user(conn, &user_name)?; 
 
     let new_role = NewRole {
         id: fetched_user.id,
@@ -89,15 +89,11 @@ pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new
         .execute(conn)
         .context(IntErrorKind::QueryError)
         .map_err(|e| {
-            error!("Unable to insert user role: {}", e)
-    });
+            error!("Unable to insert user role: {}", e);
+            e
+    })?;
 
     Ok(fetched_user)
-
-
-    
-
-    
 
 }
 

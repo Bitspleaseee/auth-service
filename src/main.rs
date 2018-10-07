@@ -1,6 +1,7 @@
 #![feature(plugin)]
 #![plugin(tarpc_plugins)]
 #![allow(proc_macro_derive_resolution_fallback)]
+#![feature(try_from)]
 
 pub mod logging;
 pub mod service;

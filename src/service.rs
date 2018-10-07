@@ -14,6 +14,7 @@ use chrono::offset::Utc;
 use chrono::DateTime;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::convert::TryInto;
 
 const PASS_PEPPER: &str = "4NqD&8Bh%d";
 const HASH_PASS_CYCLES : u32 = 10000;
@@ -154,7 +155,7 @@ impl FutureService for AuthServer {
         // Check if username is in DB
         let db_connect = db::establish_connection();
         match db::fetch_user(&db_connect, &username) {
-            Ok(_) => return Err(IntErrorKind::InvalidUsername),
+            Ok(_) => return Err(AuthError::InvalidUsername),
             Err(_) => {},
         };
 
@@ -169,10 +170,20 @@ impl FutureService for AuthServer {
 
         
         // Insert the user info into DB
-        
-        
-        
-        Ok(AddUserPayload { id, username })
+        db::insert_user(&db_connect, username.into_inner(), email.into_inner(), hashed_password)
+            .map_err(|e| {
+                error!("Unable to insert user: {}", e);
+                e.into()
+            })
+            .and_then(|user| {
+                let username = user.username;
+                let id = user.id;
+                username
+                    .try_into()
+                    .map_err(|_| AuthError::InvalidUsername)
+                    .map(move |name| (id.into(), name))})
+            .map(|(id, username)| AddUserPayload{id, username})
+
     }
 
     /* implement the other services and their return type here */
