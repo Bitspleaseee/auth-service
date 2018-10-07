@@ -20,3 +20,5 @@ tarpc = { git = "https://github.com/google/tarpc.git", branch = "master" }
 tarpc-plugins = { git = "https://github.com/google/tarpc", rev = "5e4b97e" }
 tokio-core = "0.1.17"
 rustyline = "2.1.0"
+rand = "0.5.5"
+base64 = "0.9.3"

@@ -24,6 +24,8 @@ extern crate tokio_core;
 extern crate failure;
 extern crate datatypes;
 extern crate pbkdf2;
+extern crate rand;
+extern crate base64;
 use tarpc::future::server::Options;
 use tarpc::util::FirstSocketAddr;
 use tokio_core::reactor;

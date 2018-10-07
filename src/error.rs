@@ -2,7 +2,7 @@ use failure::{Backtrace, Context, Fail};
 use std::convert::From;
 use std::fmt::{self, Display};
 
-use datatypes::content::responses::ContentError;
+use datatypes::auth::responses::AuthError;
 
 /// The type of an internal error ([struct.Error.html])
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
@@ -11,10 +11,14 @@ pub enum ErrorKind {
     ConnectionError,
     #[fail(display = "a query failed to be executed")]
     QueryError,
-    #[fail(display = "a query did not find any content")]
-    ContentNotFound,
     #[fail(display = "failed to start tarpc server")]
     ServerError,
+    #[fail(display = "invalid username")]
+    InvalidUsername,
+    #[fail(display = "invalid password")]
+    InvalidPassword,
+    #[fail(display = "invalid token")]
+    InvalidToken,
 }
 
 /// An internal error which can be used for debugging or error tracing
@@ -93,13 +97,15 @@ impl From<Context<ErrorKind>> for Error {
     }
 }
 
-impl Into<ContentError> for Error {
-    fn into(self) -> ContentError {
+impl Into<AuthError> for Error {
+    fn into(self) -> AuthError {
         match self.kind() {
-            ErrorKind::ConnectionError => ContentError::InternalServerError,
-            ErrorKind::QueryError => ContentError::InternalServerError,
-            ErrorKind::ContentNotFound => ContentError::MissingContent,
-            ErrorKind::ServerError => ContentError::InternalServerError,
+            ErrorKind::ConnectionError => AuthError::InternalServerError,
+            ErrorKind::QueryError => AuthError::InternalServerError,
+            ErrorKind::InvalidUsername => AuthError::InvalidUsername,
+            ErrorKind::InvalidPassword => AuthError::InvalidPassword,
+            ErrorKind::InvalidToken => AuthError::InvalidToken,
+            ErrorKind::ServerError => AuthError::InternalServerError,
         }
     }
 }

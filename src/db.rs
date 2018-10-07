@@ -115,7 +115,7 @@ pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> IntResult<User> 
         .first(conn)
         .optional()
         .context(IntErrorKind::QueryError)?
-        .ok_or(IntErrorKind::ContentNotFound)
+        .ok_or(IntErrorKind::InvalidUsername)
         .map_err(|e| {
             error!("Unable to fetch user: {}", e);
             e.into()

@@ -6,6 +6,9 @@ use datatypes::valid::ids::UserId;
 use datatypes::valid::token::Token;
 
 use pbkdf2::{pbkdf2_check, CheckError};
+use rand::{thread_rng, Rng};
+
+use db;
 
 use chrono::offset::Utc;
 use chrono::DateTime;
@@ -13,6 +16,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 const PASS_PEPPER: &str = "4NqD&8Bh%d";
+const HASH_PASS_CYCLES : u32 = 10000;
 
 /// The auth server which will have the rpc services
 #[derive(Clone, Default)]
@@ -68,7 +72,7 @@ impl FutureService for AuthServer {
                 .map_err(|e| {
                     error!("Unable to write to 'tokens': {}", e);
                     AuthError::InternalServerError
-                })?.remove(&token);
+                })?.remove(&token).ok_or(AuthError::InvalidToken)?;
         }
 
         Ok(())
@@ -83,7 +87,11 @@ impl FutureService for AuthServer {
         info!("Received authentication request from '{}'", username);
 
         // Get hashed password from database for current username
-        let hashed_password = /* TODO get hashed password from database */ "";
+        let db_connect = db::establish_connection();
+        let db::User { password: hashed_password, id : user_id, .. } = match db::fetch_user(&db_connect, &username) {
+            Ok(v) => v,
+            Err(e) => return Err(e.into()),
+        };
 
         // Check if the already stored hashed password matches the password
         // that the user sent
@@ -91,10 +99,16 @@ impl FutureService for AuthServer {
             Ok(_) => {
                 info!("Password matches");
 
-                let user_id = /* TODO get user_id from database */ 1.into();
-                let token = Token::new(/* TODO generate random string? */ "random");
+                let mut random_bytes = [0u8; 60];
+                thread_rng().fill(&mut random_bytes[..]);
+
+                let user_id = user_id.into();
+                let token = Token::new(base64::encode(&random_bytes[..]));
                 let now = chrono::offset::Utc::now();
-                let role = /* Get from DB*/ "admin";
+                let db::Role {name: user_role, .. } = match db::fetch_user_role(&db_connect, user_id) {
+                    Ok(v) => v,
+                    Err(e) => return Err(e.into()),
+                };
 
                 // Wrap in a empty scope, so that as soon as we're done writing
                 // to the 'HashMap', we'll drop the 'RwLockGuard' and hence make
@@ -106,7 +120,7 @@ impl FutureService for AuthServer {
                         .map_err(|e| {
                             error!("Unable to write to 'tokens': {}", e);
                             AuthError::InternalServerError
-                        })?.insert(token_clone, (user_id, role.into(), now));
+                        })?.insert(token_clone, (user_id.into(), user_role.as_str().into(), now));
                 }
                 Ok(token)
             }
@@ -138,18 +152,26 @@ impl FutureService for AuthServer {
         info!("Received register request from '{}'", username);
 
         // Check if username is in DB
-        let id = 10.into();
+        let db_connect = db::establish_connection();
+        match db::fetch_user(&db_connect, &username) {
+            Ok(_) => return Err(IntErrorKind::InvalidUsername),
+            Err(_) => {},
+        };
 
         // 'Pepper' the password
         let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
 
         // Hash the password of the user
-        let hashed_password = pbkdf2::pbkdf2_simple(&pepper_pass, 10000).map_err(|e| {
+        let hashed_password = pbkdf2::pbkdf2_simple(&pepper_pass, HASH_PASS_CYCLES).map_err(|e| {
             error!("Unable to hash password, {}", e);
             AuthError::InternalServerError
         })?;
 
+        
         // Insert the user info into DB
+        
+        
+        
         Ok(AddUserPayload { id, username })
     }
 
