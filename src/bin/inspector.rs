@@ -24,9 +24,11 @@ use datatypes::auth::requests::*;
 use datatypes::auth::responses::*;
 use datatypes::valid::fields::*;
 use datatypes::valid::token::Token;
+use datatypes::payloads::*;
 
 service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
+    rpc deauthenticate(payload: TokenPayload<EmptyPayload>) -> () | AuthError;
     /* more services should be defined (deauthenticate etc) */
 }
 

@@ -9,6 +9,8 @@ extern crate tarpc;
 extern crate chrono;
 extern crate clap;
 extern crate regex;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde;
 #[macro_use]
 extern crate log;
