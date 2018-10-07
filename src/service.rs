@@ -1,8 +1,8 @@
 use datatypes::auth::requests::{AuthPayload, RegisterUserPayload};
 use datatypes::auth::responses::{AuthError, AuthSuccess};
+use datatypes::payloads::*;
 use datatypes::valid::ids::UserId;
 use datatypes::valid::token::Token;
-use datatypes::payloads::*;
 
 use pbkdf2::{pbkdf2_check, CheckError};
 
@@ -11,16 +11,16 @@ use chrono::DateTime;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-const PASS_PEPPER : &str = "4NqD&8Bh%d";
+const PASS_PEPPER: &str = "4NqD&8Bh%d";
 
-#[derive(Clone,Copy,Eq,PartialEq,Ord,PartialOrd,Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug, Serialize, Deserialize)]
 pub enum Role {
     Admin,
     Moderator,
-    User
+    User,
 }
 
-impl<'a> From <&'a str> for Role {
+impl<'a> From<&'a str> for Role {
     fn from(s: &'a str) -> Self {
         match s {
             "admin" => Role::Admin,
@@ -72,8 +72,9 @@ impl FutureService for AuthServer {
             .map_err(|e| {
                 error!("Unable to read 'tokens': {}", e);
                 AuthError::InternalServerError
-            })?.get(&token).map(|(_,role,_)| *role).ok_or(AuthError::InvalidToken)
-
+            })?.get(&token)
+            .map(|(_, role, _)| *role)
+            .ok_or(AuthError::InvalidToken)
     }
 
     fn deauthenticate(&self, payload: TokenPayload<EmptyPayload>) -> Self::DeauthenticateFut {
@@ -159,11 +160,13 @@ impl FutureService for AuthServer {
 
         // 'Pepper' the password
         let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
-        
+
         // Hash the password of the user
-        let hashed_password = pbkdf2::pbkdf2_simple(&pepper_pass, 10000)
-            .map_err(|e| {error!("Unable to hash password, {}", e); AuthError::InternalServerError})?;
-            
+        let hashed_password = pbkdf2::pbkdf2_simple(&pepper_pass, 10000).map_err(|e| {
+            error!("Unable to hash password, {}", e);
+            AuthError::InternalServerError
+        })?;
+
         // Insert the user info into DB
         Ok(())
     }

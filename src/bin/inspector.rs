@@ -22,9 +22,9 @@ use tarpc::util::FirstSocketAddr;
 
 use datatypes::auth::requests::*;
 use datatypes::auth::responses::*;
+use datatypes::payloads::*;
 use datatypes::valid::fields::*;
 use datatypes::valid::token::Token;
-use datatypes::payloads::*;
 
 service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
