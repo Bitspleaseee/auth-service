@@ -59,49 +59,48 @@ TO DO:
 Needs to return a vector which i dont know how to do.
 
 */
-/*
-pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new_password: &str, email_token: &str) -> IntResult<User>  {
-    use crate::schema::dsl::*;
-    use crate::schema::roles::dsl::*;
-    use crate::schema::users::table as users;
 
+pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new_password: &str, email_token: &str) -> IntResult<User>  {
+    use schema::roles::dsl::*;
+    use schema::users::dsl::*;
     let new_user = NewUser {
         email: new_email.to_string(),
         username: user_name.to_string(),
         password: new_password.to_string(),
     };
 
-    let inserted = 
+    let inserted: Result<usize, ()> = 
     diesel::insert_into(users)
         .values(&new_user)
         .execute(conn)
-        .context()
+        .context(IntErrorKind::QueryError)
+        .map_err(|e| {
+            error!("Unable to insert user: {}", e)
+        });
+    let fetched_user = fetch_user(conn, user_name)?; 
 
-    if inserted == 1 {
-        let fetched_user = users
-                        .filter(username.eq(user_name))
-                        .first::<User>(conn)
-                        .unwrap();
+    let new_role = NewRole {
+        id: fetched_user.id,
+        name: "user".to_string(),
+    };
+
+    diesel::insert_into(roles)
+        .values(&new_role)
+        .execute(conn)
+        .context(IntErrorKind::QueryError)
+        .map_err(|e| {
+            error!("Unable to insert user role: {}", e)
+    });
+
+    Ok(fetched_user)
+
+
     
-        let new_role = NewRole {
-            id: fetched_user.id,
-            name: "user".to_string(),
-        };
 
-        diesel::insert_into(roles)
-            .values(&new_role)
-            .execute(conn)
-            .expect("Failed updating role");
+    
 
-
-    }
-    else {
-        // ????
-    }
-
-    return fetched_user
 }
-*/
+
 
 /*
 Needs to return vector
