@@ -1,5 +1,6 @@
-use datatypes::auth::requests::{AuthPayload, RegisterUserPayload};
-use datatypes::auth::responses::{AuthError, AuthSuccess};
+use datatypes::auth::requests::*;
+use datatypes::auth::responses::*;
+use datatypes::content::requests::AddUserPayload;
 use datatypes::payloads::*;
 use datatypes::valid::ids::UserId;
 use datatypes::valid::token::Token;
@@ -12,24 +13,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 const PASS_PEPPER: &str = "4NqD&8Bh%d";
-
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug, Serialize, Deserialize)]
-pub enum Role {
-    Admin,
-    Moderator,
-    User,
-}
-
-impl<'a> From<&'a str> for Role {
-    fn from(s: &'a str) -> Self {
-        match s {
-            "admin" => Role::Admin,
-            "moderator" => Role::Moderator,
-            "user" => Role::User,
-            _ => Role::User,
-        }
-    }
-}
 
 /// The auth server which will have the rpc services
 #[derive(Clone, Default)]
@@ -52,16 +35,14 @@ pub struct AuthServer {
 service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
     rpc deauthenticate(payload: TokenPayload<EmptyPayload>) -> () | AuthError;
-    rpc register(payload: RegisterUserPayload) -> () | AuthError;
+    rpc register(payload: RegisterUserPayload) -> AddUserPayload | AuthError;
     rpc get_user_role(payload: TokenPayload<EmptyPayload>) -> Role | AuthError;
-
-    /* more services should be defined (deauthenticate etc) */
 }
 
 impl FutureService for AuthServer {
     type AuthenticateFut = Result<Token, AuthError>;
     type DeauthenticateFut = Result<(), AuthError>;
-    type RegisterFut = Result<(), AuthError>;
+    type RegisterFut = Result<AddUserPayload, AuthError>;
     type GetUserRoleFut = Result<Role, AuthError>;
 
     fn get_user_role(&self, payload: TokenPayload<EmptyPayload>) -> Self::GetUserRoleFut {
@@ -88,7 +69,7 @@ impl FutureService for AuthServer {
                     error!("Unable to write to 'tokens': {}", e);
                     AuthError::InternalServerError
                 })?.remove(&token);
-        };
+        }
 
         Ok(())
     }
@@ -125,8 +106,8 @@ impl FutureService for AuthServer {
                         .map_err(|e| {
                             error!("Unable to write to 'tokens': {}", e);
                             AuthError::InternalServerError
-                        })?.insert(token_clone, (user_id, role.into(), now))
-                };
+                        })?.insert(token_clone, (user_id, role.into(), now));
+                }
                 Ok(token)
             }
             // The password does NOT match, return `InvalidPassword`
@@ -157,6 +138,7 @@ impl FutureService for AuthServer {
         info!("Received register request from '{}'", username);
 
         // Check if username is in DB
+        let id = 10.into();
 
         // 'Pepper' the password
         let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
@@ -168,7 +150,7 @@ impl FutureService for AuthServer {
         })?;
 
         // Insert the user info into DB
-        Ok(())
+        Ok(AddUserPayload { id, username })
     }
 
     /* implement the other services and their return type here */

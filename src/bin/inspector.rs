@@ -9,6 +9,8 @@ extern crate rustyline;
 extern crate serde_derive;
 
 extern crate datatypes;
+#[macro_use]
+extern crate failure;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -22,30 +24,36 @@ use tarpc::util::FirstSocketAddr;
 
 use datatypes::auth::requests::*;
 use datatypes::auth::responses::*;
+use datatypes::content::requests::AddUserPayload;
 use datatypes::payloads::*;
-use datatypes::valid::fields::*;
 use datatypes::valid::token::Token;
+
+use failure::Error;
+use failure::Fallible;
 
 service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
     rpc deauthenticate(payload: TokenPayload<EmptyPayload>) -> () | AuthError;
-    /* more services should be defined (deauthenticate etc) */
+    rpc register(payload: RegisterUserPayload) -> AddUserPayload | AuthError;
+    rpc get_user_role(payload: TokenPayload<EmptyPayload>) -> Role | AuthError;
 }
 
 #[derive(Copy, Clone)]
 pub enum Cmd {
     Auth,
     Deauth,
+    Register,
 }
 
 impl TryFrom<&str> for Cmd {
-    type Error = ();
+    type Error = Error;
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         use self::Cmd::*;
         match s {
             "auth" => Ok(Auth),
             "deauth" => Ok(Deauth),
-            _ => Err(()),
+            "register" => Ok(Register),
+            e => Err(format_err!("Invalid command: {}", e)),
         }
     }
 }
@@ -56,12 +64,12 @@ pub enum Mode {
 }
 
 impl TryFrom<&str> for Mode {
-    type Error = ();
+    type Error = Error;
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         use self::Mode::*;
         match s {
             "main" => Ok(Main),
-            _ => Err(()),
+            e => Err(format_err!("Invalid mode: {}", e)),
         }
     }
 }
@@ -74,41 +82,58 @@ impl Mode {
     }
 }
 
-fn cmd_handler<'a>(state: &State, s: &'a str) -> Result<(), std::option::NoneError> {
-    let mut words = s.split(char::is_whitespace);
-    let cmd = words.next().and_then(|w| w.try_into().ok())?;
+fn cmd_handler<'a>(state: &State, s: &'a str) -> Fallible<()> {
+    let mut args = s.split(char::is_whitespace);
+    let cmd = args
+        .next()
+        .ok_or(format_err!("Missing argument <cmd>"))
+        .and_then(|w| w.try_into())?;
     match (state.mode, cmd) {
-        (Mode::Main, Cmd::Auth) => run_auth(words),
-        (Mode::Main, Cmd::Deauth) => run_deauth(words),
+        (Mode::Main, Cmd::Auth) => run_auth(args),
+        (Mode::Main, Cmd::Deauth) => run_deauth(args),
+        (Mode::Main, Cmd::Register) => run_register(args),
     }
 }
 
+macro_rules! get_next_arg {
+    ($args:ident, $name:ident) => {
+        $args
+            .next()
+            .ok_or(format_err!("Missing argument <{}>", stringify!($name)))
+            .and_then(|s| {
+                s.to_owned()
+                    .try_into()
+                    .map_err(|_| format_err!("Invalid <{}>", stringify!($name)))
+            })
+    };
+}
+
 // Auth
-fn run_auth<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<(), std::option::NoneError> {
-    let username = args.next().and_then(|s| {
-        s.to_owned()
-            .try_into()
-            .map_err(|e| {
-                eprintln!("{:?}", e);
-                e
-            }).ok()
-    })?;
-    let password = args.next().and_then(|s| {
-        s.to_owned()
-            .try_into()
-            .map_err(|e| {
-                eprintln!("{:?}", e);
-                e
-            }).ok()
-    })?;
+fn run_auth<'a>(mut args: impl Iterator<Item = &'a str>) -> Fallible<()> {
+    let username = get_next_arg!(args, username)?;
+    let password = get_next_arg!(args, password)?;
     let payload = AuthPayload { username, password };
 
     run_client_action(|client| client.authenticate(payload));
+
     Ok(())
 }
 
-fn run_deauth<'a>(mut args: impl Iterator<Item = &'a str>) -> Result<(), std::option::NoneError> {
+fn run_deauth<'a>(mut args: impl Iterator<Item = &'a str>) -> Fallible<()> {
     unimplemented!()
+}
+
+fn run_register<'a>(mut args: impl Iterator<Item = &'a str>) -> Fallible<()> {
+    let username = get_next_arg!(args, username)?;
+    let password = get_next_arg!(args, password)?;
+    let email = get_next_arg!(args, email)?;
+    let payload = RegisterUserPayload {
+        username,
+        password,
+        email,
+    };
+    run_client_action(|client| client.register(payload));
+    Ok(())
 }
 
 // Connect to server
@@ -116,9 +141,7 @@ fn connect() -> Option<SyncClient> {
     let options = client::Options::default();
     let addr = "localhost:10001".first_socket_addr();
 
-    SyncClient::connect(addr, options)
-        .map_err(|e| println!("Error connecting: {:#?}", e))
-        .ok()
+    SyncClient::connect(addr, options).ok()
 }
 
 // Run a action on the server and print the result
@@ -173,12 +196,12 @@ fn main() {
                         .nth(1)
                         .map(|mode_str| state.try_set_mode(mode_str));
                 } else {
-                    cmd_handler(&state, &line).unwrap_or_else(|err| println!("Error: {:?}", err));
+                    cmd_handler(&state, &line).unwrap_or_else(|err| println!("Error: {}", err));
                 }
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
             Err(err) => {
-                println!("Error: {:?}", err);
+                println!("Error: {}", err);
                 break;
             }
         }
