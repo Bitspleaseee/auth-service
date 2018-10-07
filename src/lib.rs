@@ -6,10 +6,9 @@ extern crate dotenv;
 mod schema; 
 use std::env;
 use dotenv::dotenv;
-use diesel::prelude::*;
 
-use schema::users;
-use schema::roles;
+use diesel::prelude::*;
+use schema::*;
 
 /*
 Connects to database to URL set in .env
@@ -32,7 +31,14 @@ pub struct User {
     pub banned: bool,
     pub verified: bool,
     pub email_token: i32,
-    pub role: String,
+}
+
+
+#[derive(Queryable)]
+pub struct Role {
+    pub id: i32,
+    pub name: String,
+
 }
 
 #[derive(Debug, Insertable)]
@@ -57,7 +63,7 @@ Needs to return a vector which i dont know how to do.
 
 */
 /*
-pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new_password: &str, email_token: i32) -> IntResult<User>  {
+pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new_password: &str, email_token: &str) -> IntResult<User>  {
     use self::schema::users::dsl::*;
     use self::schema::roles::dsl::*;
     use self::schema::users::table as users;
@@ -67,6 +73,7 @@ pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new
         username: user_name.to_string(),
         password: new_password.to_string(),
     };
+
     let inserted = 
     diesel::insert_into(users)
         .values(&new_user)
@@ -89,6 +96,10 @@ pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new
             .execute(conn)
             .expect("Failed updating role");
 
+
+    }
+    else {
+        // ????
     }
 
     return fetched_user
@@ -101,12 +112,12 @@ Needs to return vector
 pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> IntResult<User> {
     use self::schema::users::table as users;
     use self::schema::users::dsl::*;
-    let user = users
+    
+    users
         .filter(username.eq(new_username))
         .first::<User>(conn)
         .expect("Error finding user");    
 
-    return user    
 }
 */
 /*
@@ -174,15 +185,17 @@ Fetches a users role based on user id
 Returns string
 */
 
-/*
-pub fn fetch_user_role(conn: &MysqlConnection, user_id: i32) -> IntResult<Role> {
-    use self::schema::roles::dsl::*;
 
-    let role = roles
+pub fn fetch_user_role(conn: &MysqlConnection, user_id: i32) -> Result<Role, String> {
+    use schema::roles::dsl::*;
+    roles
         .filter(id.eq(user_id))
-        .load::<Role>(conn)
-        .expect("Error finding user");
-    return role
+        .first::<Role>(conn)
+        .optional()
+        .map_err(|e| error!("Failed to fetch user role: {}", e))
+
+
+
 }
 
-*/
+
