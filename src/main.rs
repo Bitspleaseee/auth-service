@@ -6,6 +6,7 @@ pub mod logging;
 pub mod service;
 pub mod db;
 pub mod schema;
+pub mod error;
 #[macro_use] extern crate diesel;
 extern crate dotenv;
 #[macro_use]
@@ -26,10 +27,10 @@ extern crate pbkdf2;
 use tarpc::future::server::Options;
 use tarpc::util::FirstSocketAddr;
 use tokio_core::reactor;
-
+use crate::error::{Error as IntError,ErrorKind as IntErrorKind};
 use crate::service::FutureServiceExt;
 use failure::Error;
-
+type IntResult<T>=Result<T, IntError>;
 pub fn run() -> Result<(), Error> {
     // Get verbosity of program from the commandline
     let cmd_arguments = clap::App::new("auth-service")

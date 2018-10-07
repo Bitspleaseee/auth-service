@@ -5,7 +5,8 @@ use dotenv::dotenv;
 
 use diesel::prelude::*;
 use crate::schema::*;
-
+use crate::{IntResult,IntErrorKind};
+use failure::ResultExt;
 /*
 Connects to database to URL set in .env
 */
@@ -26,7 +27,7 @@ pub struct User {
     pub password: String,
     pub banned: bool,
     pub verified: bool,
-    pub email_token: i32,
+    pub email_token: Option <String>,
 }
 
 
@@ -74,12 +75,12 @@ pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new
     diesel::insert_into(users)
         .values(&new_user)
         .execute(conn)
-        .expect("Error creating new user");
+        .context()
 
     if inserted == 1 {
         let fetched_user = users
                         .filter(username.eq(user_name))
-                        .load::<User>(conn)
+                        .first::<User>(conn)
                         .unwrap();
     
         let new_role = NewRole {
@@ -101,79 +102,101 @@ pub fn insert_user(conn: &MysqlConnection, user_name: &str, new_email: &str, new
     return fetched_user
 }
 */
+
 /*
 Needs to return vector
 */
-/*
-pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> Result<User,> {
-    use crate::schema::users::table as users;
+
+pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> IntResult<User> {
     use crate::schema::users::dsl::*;
     
     users
         .filter(username.eq(new_username))
-        .first::<User>(conn)
-        .expect("Error finding user");    
+        .first(conn)
+        .optional()
+        .context(IntErrorKind::QueryError)?
+        .ok_or(IntErrorKind::ContentNotFound)
+        .map_err(|e| {
+            error!("Unable to fetch user: {}", e);
+            e.into()
+        })
 
 }
-*/
+
 /*
 Updates banned status of a user based on user id.
 Returns true if updated, false if not.
 */
-pub fn update_ban(conn: &MysqlConnection, user_id: u32, banned_value: bool)->  bool {
+pub fn update_ban(conn: &MysqlConnection, user_id: u32, banned_value: bool)->  IntResult<bool> {
     use crate::schema::users::dsl::*;
     let updated = diesel::update(users)
         .set(banned.eq(banned_value))
         .filter(id.eq(user_id))
         .execute(conn)
-        .expect("Error finding user");
+        .context(IntErrorKind::QueryError)
+        .map_err(|e| {
+            error!("Failed to update banned status: {}", e);
+            e
+        })?;
 
-    updated > 0
+    Ok(updated > 0)
 }
 
 /*
 Updates verified status of a user based on user id.
 Returns true if updated, false if not.
 */
-pub fn update_verify(conn: &MysqlConnection, user_id: u32, verify_value: bool)->  bool {
+pub fn update_verify(conn: &MysqlConnection, user_id: u32, verify_value: bool)->  IntResult<bool> {
     use crate::schema::users::dsl::*;
     let updated = diesel::update(users)
         .filter(id.eq(user_id))
         .set(verified.eq(verify_value))
         .execute(conn)
-        .expect("Error finding user");
+        .context(IntErrorKind::QueryError)
+        .map_err(|e| {
+            error!("Failed to update verified status: {}", e);
+            e
+        })?;
 
-    updated > 0    
+    Ok(updated > 0)    
 }
 
 /*
 Updates email_token of a user based on user id
 Returns true if updated, false if not.
 */
-pub fn update_email_token(conn: &MysqlConnection, user_id: u32, email_token_value: String)->  bool {
+pub fn update_email_token(conn: &MysqlConnection, user_id: u32, email_token_value: String)->  IntResult<bool> {
     use crate::schema::users::dsl::*;
     let updated = diesel::update(users)
         .set(email_token.eq(email_token_value))
         .filter(id.eq(user_id))
         .execute(conn)
-        .expect("Error finding user");
+        .context(IntErrorKind::QueryError)
+        .map_err(|e| {
+            error!("Failed to update email token: {}", e);
+            e
+        })?;
 
-    updated > 0
+    Ok(updated > 0)
 }
 
 /*
 Updates role status of a user based on user id.
 Returns true if updated, false if not.
 */
-pub fn update_role(conn: &MysqlConnection, user_id: u32, new_role: String)-> bool {
+pub fn update_role(conn: &MysqlConnection, user_id: u32, new_role: String)-> IntResult<bool> {
     use schema::roles::dsl::*;
     let updated = diesel::update(roles)
         .set(name.eq(new_role))
         .filter(id.eq(user_id))
         .execute(conn)
-        .expect("Failed to update user role");
+        .context(IntErrorKind::QueryError)
+        .map_err(|e| {
+            error!("Failed to update user role: {}", e);
+            e
+        } )?;
 
-    updated > 0
+    Ok(updated > 0)
 }
 
 /*
@@ -182,16 +205,18 @@ Returns string
 */
 
 
-pub fn fetch_user_role(conn: &MysqlConnection, user_id: u32) -> Result<Role, String> {
+pub fn fetch_user_role(conn: &MysqlConnection, user_id: u32) -> IntResult<Role> {
     use schema::roles::dsl::*;
     roles
         .filter(id.eq(user_id))
         .first::<Role>(conn)
         .optional()
-        .map_err(|e| error!("Failed to fetch user role: {}", e));
-
-unimplemented!();
-
+        .context(IntErrorKind::QueryError)?
+        .ok_or(IntErrorKind::ServerError)
+        .map_err(|e| {
+            error!("Failed to fetch user role: {}", e);
+            e.into()
+        } )
 }
 
 
