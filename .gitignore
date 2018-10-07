@@ -1,3 +1,22 @@
 /target
 **/*.rs.bk
-Cargo.lock
+
+# End of https://www.gitignore.io/api/rust
+
+
+### IDEs ###
+
+# Visual Studio cache directory
+.vs/
+
+
+### Misc ###
+
+# Environment variables
+.env
+
+authLogFile
+
+auth-service.log
+
+history.txt
