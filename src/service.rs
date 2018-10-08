@@ -93,10 +93,13 @@ impl FutureService for AuthServer {
             Ok(v) => v,
             Err(e) => return Err(e.into()),
         };
+        
+        // 'Pepper' the password
+        let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
 
         // Check if the already stored hashed password matches the password
         // that the user sent
-        match pbkdf2_check(&plain_password, &hashed_password) {
+        match pbkdf2_check(&pepper_pass, &hashed_password) {
             Ok(_) => {
                 info!("Password matches");
 

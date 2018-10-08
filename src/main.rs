@@ -2,6 +2,8 @@
 #![plugin(tarpc_plugins)]
 #![allow(proc_macro_derive_resolution_fallback)]
 #![feature(try_from)]
+#![feature(crate_in_paths)]
+#![feature(extern_prelude)]
 
 pub mod logging;
 pub mod service;
@@ -30,9 +32,10 @@ extern crate base64;
 use tarpc::future::server::Options;
 use tarpc::util::FirstSocketAddr;
 use tokio_core::reactor;
-use crate::error::{Error as IntError,ErrorKind as IntErrorKind};
-use crate::service::FutureServiceExt;
+use error::{Error as IntError,ErrorKind as IntErrorKind};
+use service::FutureServiceExt;
 use failure::Error;
+
 type IntResult<T>=Result<T, IntError>;
 pub fn run() -> Result<(), Error> {
     // Get verbosity of program from the commandline
