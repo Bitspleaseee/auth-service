@@ -7,6 +7,7 @@ use diesel::prelude::*;
 use crate::schema::*;
 use crate::{IntResult,IntErrorKind};
 use failure::ResultExt;
+use diesel::result::Error;
 /*
 Connects to database to URL set in .env
 */
@@ -19,7 +20,7 @@ pub fn establish_connection() -> MysqlConnection {
 }
 
 
-#[derive(Queryable)]
+#[derive(Queryable, PartialEq, Debug)]
 pub struct User {
     pub id: u32,
     pub email: String,
@@ -31,14 +32,14 @@ pub struct User {
 }
 
 
-#[derive(Queryable)]
+#[derive(Queryable, PartialEq, Debug)]
 pub struct Role {
     pub id: u32,
     pub name: String,
 
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, PartialEq, Insertable)]
 #[table_name="users"]
 pub struct NewUser {
     pub email: String,
@@ -47,7 +48,7 @@ pub struct NewUser {
 }
 
 
-#[derive(Debug, Insertable)]
+#[derive(Debug,PartialEq, Insertable)]
 #[table_name="roles"]
 pub struct NewRole {
     pub id: u32,
@@ -55,8 +56,9 @@ pub struct NewRole {
 }
 
 /*
-TO DO:
-Needs to return a vector which i dont know how to do.
+Creates a user based on username, email and hashed password.
+Updates the newly created user's role.
+Returns newly created user
 
 */
 
@@ -99,7 +101,7 @@ pub fn insert_user(conn: &MysqlConnection, user_name: String, new_email: String,
 
 
 /*
-Needs to return vector
+Returns user based on user username
 */
 
 pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> IntResult<User> {
@@ -198,8 +200,6 @@ pub fn update_role(conn: &MysqlConnection, user_id: u32, new_role: String)-> Int
 Fetches a users role based on user id
 Returns string
 */
-
-
 pub fn fetch_user_role(conn: &MysqlConnection, user_id: u32) -> IntResult<Role> {
     use schema::roles::dsl::*;
     roles
@@ -213,5 +213,108 @@ pub fn fetch_user_role(conn: &MysqlConnection, user_id: u32) -> IntResult<Role> 
             e.into()
         } )
 }
+
+
+
+#[test]
+fn test_insert_user() {
+    let mut test_user = User {
+        id: 0,
+        email: "test_email".to_string(),
+        username: "test_username".to_string(),
+        password: "test_password".to_string(),
+        banned: false,
+        verified: false,
+        email_token: Option::None,
+    };
+
+    let new_user = NewUser {
+        username: "test_username".to_string(),
+        email: "test_email".to_string(),
+        password: "test_password".to_string(),
+    };
+
+    
+    let conn = establish_connection();
+    &conn.transaction::<(), _, _>(|| {
+        let userv = insert_user(&conn, new_user.username,new_user.email,new_user.password);
+        let user = userv.unwrap();
+        test_user.id += user.id;
+        let test_role = Role {
+            id: user.id,
+            name: "user".to_string(),
+        };
+        let role = fetch_user_role(&conn, test_role.id);
+
+        assert_eq!(test_user,user);
+        assert_eq!(test_role,role.unwrap());
+
+        Err(Error::RollbackTransaction)
+    });
+
+}
+
+
+#[test]
+fn test_insert_user_fail() {
+
+    let new_user = NewUser {
+        username: "REEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE".to_string(),
+        email: "email_test1".to_string(),
+        password: "password1".to_string()
+    };
+
+    let conn = establish_connection();
+    &conn.transaction::<(), _, _>(|| {
+        let user = insert_user(&conn, new_user.username, new_user.email, new_user.password);
+        assert!(user.is_err());
+        Err(Error::RollbackTransaction)
+    });    
+ }
+
+
+#[test]
+fn test_update_functions() {
+
+    let mut test_user = User {
+        id: 0,
+        email: "email1".to_string(),
+        username: "username1".to_string(),
+        password: "password1".to_string(),
+        banned: true,
+        verified: true,
+        email_token: Option::Some("123456789".to_string()),
+    };
+
+    let new_user = NewUser {
+        username: "username1".to_string(),
+        email: "email1".to_string(),
+        password: "password1".to_string()
+    };
+    let conn = establish_connection();
+    &conn.transaction::<(), _, _>(|| {
+        let userv = insert_user(&conn, new_user.username, new_user.email, new_user.password);
+        let user = userv.unwrap();
+        test_user.id += user.id;
+        let test_role = Role {
+            id: test_user.id,
+            name: "moderator".to_string(),
+        };
+        assert_eq!(true, update_role(&conn, user.id, "moderator".to_string()).unwrap());
+        let new_user_role = fetch_user_role(&conn, user.id);
+        assert_eq!(test_role, new_user_role.unwrap());
+
+        assert_eq!(true, update_ban(&conn, user.id, true).unwrap());
+        assert_eq!(true, update_email_token(&conn, user.id, "123456789".to_string()).unwrap());
+        assert_eq!(true, update_verify(&conn, user.id, true).unwrap());
+
+        let userv = fetch_user(&conn, &test_user.username);
+        assert_eq!(test_user,userv.unwrap());
+        Err(Error::RollbackTransaction)
+    });
+}
+
+
+
 
 
