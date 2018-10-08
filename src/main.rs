@@ -5,38 +5,39 @@
 #![feature(crate_in_paths)]
 #![feature(extern_prelude)]
 
-pub mod logging;
-pub mod service;
 pub mod db;
-pub mod schema;
 pub mod error;
-#[macro_use] extern crate diesel;
+pub mod logging;
+pub mod schema;
+pub mod service;
+#[macro_use]
+extern crate diesel;
 extern crate dotenv;
 #[macro_use]
 extern crate tarpc;
 extern crate chrono;
 extern crate clap;
 extern crate regex;
-extern crate serde_derive;
 extern crate serde;
+extern crate serde_derive;
 #[macro_use]
 extern crate log;
 extern crate fern;
 extern crate tokio_core;
 #[macro_use]
 extern crate failure;
+extern crate base64;
 extern crate datatypes;
 extern crate pbkdf2;
 extern crate rand;
-extern crate base64;
-use tarpc::future::server::Options;
-use tarpc::util::FirstSocketAddr;
-use tokio_core::reactor;
-use error::{Error as IntError,ErrorKind as IntErrorKind};
-use service::FutureServiceExt;
+use error::{Error as IntError, ErrorKind as IntErrorKind};
 use failure::Error;
+use service::FutureServiceExt;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tarpc::future::server::Options;
+use tokio_core::reactor;
 
-type IntResult<T>=Result<T, IntError>;
+type IntResult<T> = Result<T, IntError>;
 pub fn run() -> Result<(), Error> {
     // Get verbosity of program from the commandline
     let cmd_arguments = clap::App::new("auth-service")
@@ -61,7 +62,7 @@ pub fn run() -> Result<(), Error> {
     let auth_server = service::AuthServer::default();
 
     // TODO set addr from environmen variables
-    let addr = "localhost:10001".first_socket_addr();
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10001);
     let opts = Options::default();
 
     let (_handle, server) = auth_server

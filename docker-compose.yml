@@ -1,0 +1,17 @@
+version: '3.1'
+services:
+  controller:
+    depends_on:
+      - db
+    environment:
+      AUTH_DATABASE_URL: "mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}"
+    build: .
+  db:
+    image: mariadb:10.3
+    environment:
+      MYSQL_USER: "${MYSQL_USER}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+
+# vim:ts=2:sw=2

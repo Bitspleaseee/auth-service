@@ -1,7 +1,6 @@
 use datatypes::auth::requests::*;
 use datatypes::auth::responses::*;
 use datatypes::content::requests::AddUserPayload;
-use datatypes::payloads::*;
 use datatypes::valid::ids::UserId;
 use datatypes::valid::token::Token;
 
@@ -13,11 +12,11 @@ use db;
 use chrono::offset::Utc;
 use chrono::DateTime;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use std::convert::TryInto;
+use std::sync::{Arc, RwLock};
 
 const PASS_PEPPER: &str = "4NqD&8Bh%d";
-const HASH_PASS_CYCLES : u32 = 10000;
+const HASH_PASS_CYCLES: u32 = 10000;
 
 /// The auth server which will have the rpc services
 #[derive(Clone, Default)]
@@ -39,9 +38,9 @@ pub struct AuthServer {
 
 service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
-    rpc deauthenticate(payload: TokenPayload<EmptyPayload>) -> () | AuthError;
+    rpc deauthenticate(payload: Token) -> () | AuthError;
     rpc register(payload: RegisterUserPayload) -> AddUserPayload | AuthError;
-    rpc get_user_role(payload: TokenPayload<EmptyPayload>) -> Role | AuthError;
+    rpc get_user_role(payload: Token) -> Role | AuthError;
 }
 
 impl FutureService for AuthServer {
@@ -50,9 +49,7 @@ impl FutureService for AuthServer {
     type RegisterFut = Result<AddUserPayload, AuthError>;
     type GetUserRoleFut = Result<Role, AuthError>;
 
-    fn get_user_role(&self, payload: TokenPayload<EmptyPayload>) -> Self::GetUserRoleFut {
-        let (_, token) = payload.into_inner();
-
+    fn get_user_role(&self, token: Token) -> Self::GetUserRoleFut {
         self.tokens
             .read()
             .map_err(|e| {
@@ -63,9 +60,7 @@ impl FutureService for AuthServer {
             .ok_or(AuthError::InvalidToken)
     }
 
-    fn deauthenticate(&self, payload: TokenPayload<EmptyPayload>) -> Self::DeauthenticateFut {
-        let (_, token) = payload.into_inner();
-
+    fn deauthenticate(&self, token: Token) -> Self::DeauthenticateFut {
         // Remove the token from the HashMap
         {
             self.tokens
@@ -73,7 +68,8 @@ impl FutureService for AuthServer {
                 .map_err(|e| {
                     error!("Unable to write to 'tokens': {}", e);
                     AuthError::InternalServerError
-                })?.remove(&token).ok_or(AuthError::InvalidToken)?;
+                })?.remove(&token)
+                .ok_or(AuthError::InvalidToken)?;
         }
 
         Ok(())
@@ -89,11 +85,15 @@ impl FutureService for AuthServer {
 
         // Get hashed password from database for current username
         let db_connect = db::establish_connection();
-        let db::User { password: hashed_password, id : user_id, .. } = match db::fetch_user(&db_connect, &username) {
+        let db::User {
+            password: hashed_password,
+            id: user_id,
+            ..
+        } = match db::fetch_user(&db_connect, &username) {
             Ok(v) => v,
             Err(e) => return Err(e.into()),
         };
-        
+
         // 'Pepper' the password
         let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
 
@@ -109,7 +109,9 @@ impl FutureService for AuthServer {
                 let user_id = user_id.into();
                 let token = Token::new(base64::encode(&random_bytes[..]));
                 let now = chrono::offset::Utc::now();
-                let db::Role {name: user_role, .. } = match db::fetch_user_role(&db_connect, user_id) {
+                let db::Role {
+                    name: user_role, ..
+                } = match db::fetch_user_role(&db_connect, user_id) {
                     Ok(v) => v,
                     Err(e) => return Err(e.into()),
                 };
@@ -124,7 +126,10 @@ impl FutureService for AuthServer {
                         .map_err(|e| {
                             error!("Unable to write to 'tokens': {}", e);
                             AuthError::InternalServerError
-                        })?.insert(token_clone, (user_id.into(), user_role.as_str().into(), now));
+                        })?.insert(
+                            token_clone,
+                            (user_id.into(), user_role.as_str().into(), now),
+                        );
                 }
                 Ok(token)
             }
@@ -159,34 +164,36 @@ impl FutureService for AuthServer {
         let db_connect = db::establish_connection();
         match db::fetch_user(&db_connect, &username) {
             Ok(_) => return Err(AuthError::InvalidUsername),
-            Err(_) => {},
+            Err(_) => {}
         };
 
         // 'Pepper' the password
         let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
 
         // Hash the password of the user
-        let hashed_password = pbkdf2::pbkdf2_simple(&pepper_pass, HASH_PASS_CYCLES).map_err(|e| {
-            error!("Unable to hash password, {}", e);
-            AuthError::InternalServerError
-        })?;
+        let hashed_password =
+            pbkdf2::pbkdf2_simple(&pepper_pass, HASH_PASS_CYCLES).map_err(|e| {
+                error!("Unable to hash password, {}", e);
+                AuthError::InternalServerError
+            })?;
 
-        
         // Insert the user info into DB
-        db::insert_user(&db_connect, username.into_inner(), email.into_inner(), hashed_password)
-            .map_err(|e| {
-                error!("Unable to insert user: {}", e);
-                e.into()
-            })
-            .and_then(|user| {
-                let username = user.username;
-                let id = user.id;
-                username
-                    .try_into()
-                    .map_err(|_| AuthError::InvalidUsername)
-                    .map(move |name| (id.into(), name))})
-            .map(|(id, username)| AddUserPayload{id, username})
-
+        db::insert_user(
+            &db_connect,
+            username.into_inner(),
+            email.into_inner(),
+            hashed_password,
+        ).map_err(|e| {
+            error!("Unable to insert user: {}", e);
+            e.into()
+        }).and_then(|user| {
+            let username = user.username;
+            let id = user.id;
+            username
+                .try_into()
+                .map_err(|_| AuthError::InvalidUsername)
+                .map(move |name| (id.into(), name))
+        }).map(|(id, username)| AddUserPayload { id, username })
     }
 
     /* implement the other services and their return type here */
