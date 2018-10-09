@@ -28,18 +28,24 @@ extern crate tokio_core;
 extern crate failure;
 extern crate base64;
 extern crate datatypes;
+extern crate futures;
+extern crate futures_cpupool;
 extern crate pbkdf2;
 extern crate rand;
+
+use dotenv::dotenv;
 use error::{Error as IntError, ErrorKind as IntErrorKind};
 use failure::Error;
 use service::FutureServiceExt;
+use std::env;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tarpc::future::server::Options;
 use tokio_core::reactor;
 
 type IntResult<T> = Result<T, IntError>;
+
 pub fn run() -> Result<(), Error> {
-    // Get verbosity of program from the commandline
+    // Get command line arguments
     let cmd_arguments = clap::App::new("auth-service")
         .arg(
             clap::Arg::with_name("verbose")
@@ -49,6 +55,7 @@ pub fn run() -> Result<(), Error> {
                 .help("Increases logging verbosity each use for up to 3 times"),
         ).get_matches();
 
+    // Setup logging
     let verbosity: u64 = cmd_arguments.occurrences_of("verbose");
 
     logging::setup_logging(verbosity)
@@ -58,18 +65,28 @@ pub fn run() -> Result<(), Error> {
     let mut reactor = reactor::Core::new()
         .map_err(|e| format_err!("unable to create a tokio runtime: {:?}", e))?;
 
-    // Create a server with a default state (e.g empty HashMap)
-    let auth_server = service::AuthServer::default();
+    // Create a server with a default state (e.g empty HashMap) adn setup the db pool
+    dotenv().ok();
+    let database_url = std::env::var("AUTH_DATABASE_URL")
+        .expect("AUTH_DATABASE_URL must be set as an environment variable or in a '.env' file");
+    let auth_server = service::AuthServer::try_new(&database_url)?;
 
-    // TODO set addr from environmen variables
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10001);
+    // Get the server address
+    let address = match std::env::var("AUTH_ADDRESS") {
+        Ok(value) => value.parse().expect("Invalid formatted AUTH_ADDRESS"),
+        Err(_) => {
+            warn!("AUTH_ADDRESS is not set, using '127.0.0.1:10001'");
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10001)
+        }
+    };
+
+    // Start
     let opts = Options::default();
-
     let (_handle, server) = auth_server
-        .listen(addr, &reactor.handle(), opts)
+        .listen(address, &reactor.handle(), opts)
         .map_err(|e| format_err!("Unable to startup server: {:?}", e))?;
 
-    info!("starting up server on {}", addr);
+    info!("starting up server on {}", address);
     reactor
         .run(server)
         .map_err(|_| format_err!("quit from eventloop with error"))

@@ -1,17 +1,20 @@
-
-
-use std::env;
-use dotenv::dotenv;
-
 use diesel::prelude::*;
-use crate::schema::*;
-use crate::{IntResult,IntErrorKind};
-use failure::ResultExt;
+use diesel::r2d2::{self, ConnectionManager};
 use diesel::result::Error;
+use dotenv::dotenv;
+use failure::ResultExt;
+use std::env;
+
+use crate::schema::*;
+use crate::{IntErrorKind, IntResult};
+
+pub type DbConn = MysqlConnection;
+pub type DbPool = diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::MysqlConnection>>;
+
 /*
 Connects to database to URL set in .env
 */
-pub fn establish_connection() -> MysqlConnection {
+fn establish_connection() -> MysqlConnection {
     dotenv().ok();
 
     let database_url = env::var("AUTH_DATABASE_URL").expect("AUTH_DATABASE_URL must be set");
@@ -19,6 +22,16 @@ pub fn establish_connection() -> MysqlConnection {
         .expect(&format!("Error connecting to {}", database_url))
 }
 
+/// Makes a pool of connections to the database
+pub fn setup_connection_pool(database_url: &str) -> IntResult<DbPool> {
+    let manager = ConnectionManager::<DbConn>::new(database_url);
+    let diesel_db_config = r2d2::Pool::builder();
+
+    diesel_db_config
+        .build(manager)
+        .context(IntErrorKind::ConnectionError)
+        .map_err(|e| e.into())
+}
 
 #[derive(Queryable, PartialEq, Debug)]
 pub struct User {
@@ -28,28 +41,25 @@ pub struct User {
     pub password: String,
     pub banned: bool,
     pub verified: bool,
-    pub email_token: Option <String>,
+    pub email_token: Option<String>,
 }
-
 
 #[derive(Queryable, PartialEq, Debug)]
 pub struct Role {
     pub id: u32,
     pub name: String,
-
 }
 
 #[derive(Debug, PartialEq, Insertable)]
-#[table_name="users"]
+#[table_name = "users"]
 pub struct NewUser {
     pub email: String,
     pub username: String,
     pub password: String,
 }
 
-
-#[derive(Debug,PartialEq, Insertable)]
-#[table_name="roles"]
+#[derive(Debug, PartialEq, Insertable)]
+#[table_name = "roles"]
 pub struct NewRole {
     pub id: u32,
     pub name: String,
@@ -62,7 +72,12 @@ Returns newly created user
 
 */
 
-pub fn insert_user(conn: &MysqlConnection, user_name: String, new_email: String, new_password: String) -> IntResult<User>  {
+pub fn insert_user(
+    conn: &MysqlConnection,
+    user_name: String,
+    new_email: String,
+    new_password: String,
+) -> IntResult<User> {
     use schema::roles::dsl::*;
     use schema::users::dsl::*;
     let new_user = NewUser {
@@ -79,7 +94,7 @@ pub fn insert_user(conn: &MysqlConnection, user_name: String, new_email: String,
             error!("Unable to insert user: {}", e);
             e
         })?;
-    let fetched_user = fetch_user(conn, &user_name)?; 
+    let fetched_user = fetch_user(conn, &user_name)?;
 
     let new_role = NewRole {
         id: fetched_user.id,
@@ -93,20 +108,18 @@ pub fn insert_user(conn: &MysqlConnection, user_name: String, new_email: String,
         .map_err(|e| {
             error!("Unable to insert user role: {}", e);
             e
-    })?;
+        })?;
 
     Ok(fetched_user)
-
 }
-
 
 /*
 Returns user based on user username
 */
 
-pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> IntResult<User> {
+pub fn fetch_user(conn: &MysqlConnection, new_username: &str) -> IntResult<User> {
     use crate::schema::users::dsl::*;
-    
+
     users
         .filter(username.eq(new_username))
         .first(conn)
@@ -117,14 +130,13 @@ pub fn fetch_user(conn: &MysqlConnection, new_username: &str)-> IntResult<User> 
             error!("Unable to fetch user: {}", e);
             e.into()
         })
-
 }
 
 /*
 Updates banned status of a user based on user id.
 Returns true if updated, false if not.
 */
-pub fn update_ban(conn: &MysqlConnection, user_id: u32, banned_value: bool)->  IntResult<bool> {
+pub fn update_ban(conn: &MysqlConnection, user_id: u32, banned_value: bool) -> IntResult<bool> {
     use crate::schema::users::dsl::*;
     let updated = diesel::update(users)
         .set(banned.eq(banned_value))
@@ -143,7 +155,7 @@ pub fn update_ban(conn: &MysqlConnection, user_id: u32, banned_value: bool)->  I
 Updates verified status of a user based on user id.
 Returns true if updated, false if not.
 */
-pub fn update_verify(conn: &MysqlConnection, user_id: u32, verify_value: bool)->  IntResult<bool> {
+pub fn update_verify(conn: &MysqlConnection, user_id: u32, verify_value: bool) -> IntResult<bool> {
     use crate::schema::users::dsl::*;
     let updated = diesel::update(users)
         .filter(id.eq(user_id))
@@ -155,14 +167,18 @@ pub fn update_verify(conn: &MysqlConnection, user_id: u32, verify_value: bool)->
             e
         })?;
 
-    Ok(updated > 0)    
+    Ok(updated > 0)
 }
 
 /*
 Updates email_token of a user based on user id
 Returns true if updated, false if not.
 */
-pub fn update_email_token(conn: &MysqlConnection, user_id: u32, email_token_value: String)->  IntResult<bool> {
+pub fn update_email_token(
+    conn: &MysqlConnection,
+    user_id: u32,
+    email_token_value: String,
+) -> IntResult<bool> {
     use crate::schema::users::dsl::*;
     let updated = diesel::update(users)
         .set(email_token.eq(email_token_value))
@@ -181,7 +197,7 @@ pub fn update_email_token(conn: &MysqlConnection, user_id: u32, email_token_valu
 Updates role status of a user based on user id.
 Returns true if updated, false if not.
 */
-pub fn update_role(conn: &MysqlConnection, user_id: u32, new_role: String)-> IntResult<bool> {
+pub fn update_role(conn: &MysqlConnection, user_id: u32, new_role: String) -> IntResult<bool> {
     use schema::roles::dsl::*;
     let updated = diesel::update(roles)
         .set(name.eq(new_role))
@@ -191,7 +207,7 @@ pub fn update_role(conn: &MysqlConnection, user_id: u32, new_role: String)-> Int
         .map_err(|e| {
             error!("Failed to update user role: {}", e);
             e
-        } )?;
+        })?;
 
     Ok(updated > 0)
 }
@@ -211,10 +227,8 @@ pub fn fetch_user_role(conn: &MysqlConnection, user_id: u32) -> IntResult<Role> 
         .map_err(|e| {
             error!("Failed to fetch user role: {}", e);
             e.into()
-        } )
+        })
 }
-
-
 
 #[test]
 fn test_insert_user() {
@@ -234,10 +248,9 @@ fn test_insert_user() {
         password: "test_password".to_string(),
     };
 
-    
     let conn = establish_connection();
     &conn.transaction::<(), _, _>(|| {
-        let userv = insert_user(&conn, new_user.username,new_user.email,new_user.password);
+        let userv = insert_user(&conn, new_user.username, new_user.email, new_user.password);
         let user = userv.unwrap();
         test_user.id += user.id;
         let test_role = Role {
@@ -246,22 +259,19 @@ fn test_insert_user() {
         };
         let role = fetch_user_role(&conn, test_role.id);
 
-        assert_eq!(test_user,user);
-        assert_eq!(test_role,role.unwrap());
+        assert_eq!(test_user, user);
+        assert_eq!(test_role, role.unwrap());
 
         Err(Error::RollbackTransaction)
     });
-
 }
-
 
 #[test]
 fn test_insert_user_fail() {
-
     let new_user = NewUser {
         username: "REEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE".to_string(),
         email: "email_test1".to_string(),
-        password: "password1".to_string()
+        password: "password1".to_string(),
     };
 
     let conn = establish_connection();
@@ -269,13 +279,11 @@ fn test_insert_user_fail() {
         let user = insert_user(&conn, new_user.username, new_user.email, new_user.password);
         assert!(user.is_err());
         Err(Error::RollbackTransaction)
-    });    
- }
-
+    });
+}
 
 #[test]
 fn test_update_functions() {
-
     let mut test_user = User {
         id: 0,
         email: "email1".to_string(),
@@ -289,7 +297,7 @@ fn test_update_functions() {
     let new_user = NewUser {
         username: "username1".to_string(),
         email: "email1".to_string(),
-        password: "password1".to_string()
+        password: "password1".to_string(),
     };
     let conn = establish_connection();
     &conn.transaction::<(), _, _>(|| {
@@ -300,21 +308,22 @@ fn test_update_functions() {
             id: test_user.id,
             name: "moderator".to_string(),
         };
-        assert_eq!(true, update_role(&conn, user.id, "moderator".to_string()).unwrap());
+        assert_eq!(
+            true,
+            update_role(&conn, user.id, "moderator".to_string()).unwrap()
+        );
         let new_user_role = fetch_user_role(&conn, user.id);
         assert_eq!(test_role, new_user_role.unwrap());
 
         assert_eq!(true, update_ban(&conn, user.id, true).unwrap());
-        assert_eq!(true, update_email_token(&conn, user.id, "123456789".to_string()).unwrap());
+        assert_eq!(
+            true,
+            update_email_token(&conn, user.id, "123456789".to_string()).unwrap()
+        );
         assert_eq!(true, update_verify(&conn, user.id, true).unwrap());
 
         let userv = fetch_user(&conn, &test_user.username);
-        assert_eq!(test_user,userv.unwrap());
+        assert_eq!(test_user, userv.unwrap());
         Err(Error::RollbackTransaction)
     });
 }
-
-
-
-
-
