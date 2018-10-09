@@ -70,7 +70,7 @@ impl FutureService for AuthServer {
     type GetUserRoleFut = Result<Role, AuthError>;
 
     fn get_user_role(&self, token: Token) -> Self::GetUserRoleFut {
-        trace!("Getting user role: {:?}", &token);
+        debug!("Received get role request for token: {:?}", &token);
 
         self.tokens
             .read()
@@ -78,12 +78,18 @@ impl FutureService for AuthServer {
                 error!("Unable to read 'tokens': {}", e);
                 AuthError::InternalServerError
             })?.get(&token)
-            .map(|(_, role, _)| *role)
-            .ok_or(AuthError::InvalidToken)
+            .map(|(_, role, _)| { 
+                trace!("Found token; role: {:?}", *role); 
+                *role
+            })
+            .ok_or({
+                trace!("No token found");
+                AuthError::InvalidToken
+            })
     }
 
     fn deauthenticate(&self, token: Token) -> Self::DeauthenticateFut {
-        trace!("Deauthenticateing: {:?}", &token);
+        debug!("Received deauthenticate request for token: {:?}", &token);
 
         self.tokens
             .write()
@@ -91,12 +97,16 @@ impl FutureService for AuthServer {
                 error!("Unable to write to 'tokens': {}", e);
                 AuthError::InternalServerError
             })?.remove(&token)
-            .ok_or(AuthError::InvalidToken)?;
+            .ok_or({
+                AuthError::InvalidToken
+            })?;
+
+        trace!("Found and removed token");
         Ok(())
     }
 
     fn authenticate(&self, payload: AuthPayload) -> Self::AuthenticateFut {
-        trace!("Authenticating user: {}", &payload.username);
+        debug!("Received authentication request from: {}", &payload.username);
 
         let cloned_pool = self.db_pool.clone();
         let cloned_tokens = self.tokens.clone();
@@ -113,16 +123,20 @@ impl FutureService for AuthServer {
                         password: plain_password,
                     } = payload;
 
-                    info!("Received authentication request from '{}'", username);
-
                     // Get hashed password from database for current username
                     let db::User {
                         password: hashed_password,
                         id: user_id,
                         ..
                     } = match db::fetch_user(&con, &username) {
-                        Ok(v) => v,
-                        Err(e) => return Err(e.into()),
+                        Ok(v) => {
+                            trace!("Found user");
+                            v
+                        },
+                        Err(e) => {
+                            trace!("User not found");
+                            return Err(e.into())
+                        },
                     };
 
                     // 'Pepper' the password
@@ -138,19 +152,27 @@ impl FutureService for AuthServer {
                             thread_rng().fill(&mut random_bytes[..]);
 
                             let user_id = user_id.into();
-                            let token = Token::new(base64::encode(&random_bytes[..]));
-                            let now = chrono::offset::Utc::now();
                             let db::Role {
                                 name: user_role, ..
                             } = match db::fetch_user_role(&con, user_id) {
-                                Ok(v) => v,
-                                Err(e) => return Err(e.into()),
+                                Ok(v) => {
+                                    trace!("Found user role");
+                                    v
+                                },
+                                Err(e) => {
+                                    trace!("Failed to find user role");
+                                    return Err(e.into())
+                                },
                             };
 
                             // Wrap in a empty scope, so that as soon as we're done writing
                             // to the 'HashMap', we'll drop the 'RwLockGuard' and hence make
                             // the 'HashMap' avaliable to other threads etc.
+                            trace!("Generating token");
+                            let token = Token::new(base64::encode(&random_bytes[..]));
+                            let now = chrono::offset::Utc::now();
                             {
+
                                 let token_clone = token.clone();
                                 cloned_tokens
                                     .write()
@@ -162,6 +184,7 @@ impl FutureService for AuthServer {
                                         (user_id.into(), user_role.as_str().into(), now),
                                     );
                             }
+                            trace!("Returning token");
                             Ok(token)
                         }
                         // The password does NOT match, return `InvalidPassword`
@@ -186,7 +209,7 @@ impl FutureService for AuthServer {
     }
 
     fn register(&self, payload: RegisterUserPayload) -> Self::RegisterFut {
-        trace!("Registering user: {}", &payload.username);
+        debug!("Received register user request from: {}", &payload.username);
 
         let cloned_pool = self.db_pool.clone();
 
@@ -205,7 +228,10 @@ impl FutureService for AuthServer {
 
                     // Check if username is in DB
                     match db::fetch_user(&con, &username) {
-                        Ok(_) => return Err(AuthError::InvalidUsername),
+                        Ok(_) => {
+                            trace!("The username already exists");
+                            return Err(AuthError::ExistingUser)
+                        },
                         Err(_) => {}
                     };
 
@@ -213,6 +239,7 @@ impl FutureService for AuthServer {
                     let pepper_pass = plain_password.into_inner() + &PASS_PEPPER;
 
                     // Hash the password of the user
+                    trace!("Hashing password");
                     let hashed_password = pbkdf2::pbkdf2_simple(&pepper_pass, HASH_PASS_CYCLES)
                         .map_err(|e| {
                             error!("Unable to hash password, {}", e);
@@ -220,6 +247,7 @@ impl FutureService for AuthServer {
                         })?;
 
                     // Insert the user info into DB
+                    trace!("Inserting user");
                     db::insert_user(
                         &con,
                         username.into_inner(),
@@ -235,7 +263,7 @@ impl FutureService for AuthServer {
                             .try_into()
                             .map_err(|_| AuthError::InvalidUsername)
                             .map(move |name| (id.into(), name))
-                    }).map(|(id, username)| AddUserPayload { id, username })
+                    }).map(|(id, username)| {trace!("Returning user payload"); AddUserPayload { id, username }})
                 })
         });
 
