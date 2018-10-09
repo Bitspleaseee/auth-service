@@ -14,7 +14,7 @@ pub type DbPool = diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::Mys
 /*
 Connects to database to URL set in .env
 */
-fn establish_connection() -> MysqlConnection {
+pub fn establish_connection() -> MysqlConnection {
     dotenv().ok();
 
     let database_url = env::var("AUTH_DATABASE_URL").expect("AUTH_DATABASE_URL must be set");

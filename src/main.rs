@@ -8,8 +8,10 @@
 pub mod db;
 pub mod error;
 pub mod logging;
+pub mod migration;
 pub mod schema;
 pub mod service;
+
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
@@ -52,6 +54,12 @@ pub fn run() -> Result<(), Error> {
                 .long("verbose")
                 .multiple(true)
                 .help("Increases logging verbosity each use for up to 3 times"),
+        ).arg(
+            clap::Arg::with_name("migrate")
+                .short("m")
+                .long("migrate")
+                .multiple(true)
+                .help("Runs db migration"),
         ).get_matches();
 
     // Setup logging
@@ -64,11 +72,10 @@ pub fn run() -> Result<(), Error> {
     let mut reactor = reactor::Core::new()
         .map_err(|e| format_err!("unable to create a tokio runtime: {:?}", e))?;
 
-    // Create a server with a default state (e.g empty HashMap) adn setup the db pool
+    // Get db url
     dotenv().ok();
     let database_url = std::env::var("AUTH_DATABASE_URL")
         .expect("AUTH_DATABASE_URL must be set as an environment variable or in a '.env' file");
-    let auth_server = service::AuthServer::try_new(&database_url)?;
 
     // Get the server address
     let address = match std::env::var("AUTH_ADDRESS") {
@@ -83,13 +90,24 @@ pub fn run() -> Result<(), Error> {
         }
     };
 
+    // Setup server
+    info!("Setting up server");
+    let auth_server = service::AuthServer::try_new(&database_url)?;
+
+    //Migrate
+    let migrate: u64 = cmd_arguments.occurrences_of("migrate");
+    if migrate > 0 {
+        info!("Running db migration");
+        migration::run(&database_url)?;
+    }
+
     // Start
     let opts = Options::default();
     let (_handle, server) = auth_server
         .listen(address, &reactor.handle(), opts)
         .map_err(|e| format_err!("Unable to startup server: {:?}", e))?;
 
-    info!("starting up server on {}", address);
+    info!("Starting server on {}", address);
     reactor
         .run(server)
         .map_err(|_| format_err!("quit from eventloop with error"))
