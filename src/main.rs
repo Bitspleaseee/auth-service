@@ -37,7 +37,7 @@ use dotenv::dotenv;
 use error::{Error as IntError, ErrorKind as IntErrorKind};
 use failure::Error;
 use service::FutureServiceExt;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{SocketAddr, ToSocketAddrs};
 use tarpc::future::server::Options;
 use tokio_core::reactor;
 
@@ -72,10 +72,14 @@ pub fn run() -> Result<(), Error> {
 
     // Get the server address
     let address = match std::env::var("AUTH_ADDRESS") {
-        Ok(value) => value.parse().expect("Invalid formatted AUTH_ADDRESS"),
+        Ok(value) => value
+            .to_socket_addrs()
+            .expect("Unable to perorm AUTH_ADDRESS resolving")
+            .next()
+            .expect(&format!("Unable to resolve '{}'", value)),
         Err(_) => {
             warn!("AUTH_ADDRESS is not set, using '127.0.0.1:10001'");
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 10001)
+            SocketAddr::from(([127, 0, 0, 1], 10001))
         }
     };
 
