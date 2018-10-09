@@ -26,6 +26,8 @@ use datatypes::auth::requests::*;
 use datatypes::auth::responses::*;
 use datatypes::content::requests::AddUserPayload;
 use datatypes::payloads::*;
+use datatypes::valid::fields::*;
+use datatypes::valid::ids::*;
 use datatypes::valid::token::Token;
 
 use failure::Error;
@@ -33,9 +35,10 @@ use failure::Fallible;
 
 service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
-    rpc deauthenticate(payload: TokenPayload<EmptyPayload>) -> () | AuthError;
+    rpc deauthenticate(payload: Token) -> () | AuthError;
     rpc register(payload: RegisterUserPayload) -> AddUserPayload | AuthError;
-    rpc get_user_role(payload: TokenPayload<EmptyPayload>) -> Role | AuthError;
+    rpc get_user_role(payload: Token) -> Role | AuthError;
+    rpc set_user_role(payload: SetUserRolePayload) -> () | AuthError;
 }
 
 #[derive(Copy, Clone)]
@@ -43,6 +46,7 @@ pub enum Cmd {
     Auth,
     Deauth,
     Register,
+    SetRole,
 }
 
 impl<'a> TryFrom<&'a str> for Cmd {
@@ -53,6 +57,7 @@ impl<'a> TryFrom<&'a str> for Cmd {
             "auth" => Ok(Auth),
             "deauth" => Ok(Deauth),
             "register" => Ok(Register),
+            "set-role" => Ok(SetRole),
             e => Err(format_err!("Invalid command: {}", e)),
         }
     }
@@ -92,6 +97,7 @@ fn cmd_handler<'a>(state: &State, s: &'a str) -> Fallible<()> {
         (Mode::Main, Cmd::Auth) => run_auth(args),
         (Mode::Main, Cmd::Deauth) => run_deauth(args),
         (Mode::Main, Cmd::Register) => run_register(args),
+        (Mode::Main, Cmd::SetRole) => run_set_user_role(args),
     }
 }
 
@@ -103,6 +109,18 @@ macro_rules! get_next_arg {
             .and_then(|s| {
                 s.to_owned()
                     .try_into()
+                    .map_err(|_| format_err!("Invalid <{}>", stringify!($name)))
+            })
+    };
+}
+macro_rules! get_next_id {
+    ($args:ident, $inner:ty => $name:ident) => {
+        $args
+            .next()
+            .ok_or(format_err!("Missing argument <{}>", stringify!($name)))
+            .and_then(|s| {
+                s.parse::<$inner>()
+                    .map(|n| n.into())
                     .map_err(|_| format_err!("Invalid <{}>", stringify!($name)))
             })
     };
@@ -136,10 +154,21 @@ fn run_register<'a>(mut args: impl Iterator<Item = &'a str>) -> Fallible<()> {
     Ok(())
 }
 
+fn run_set_user_role<'a>(mut args: impl Iterator<Item = &'a str>) -> Fallible<()> {
+    let id = get_next_id!(args, u32 => user_id)?;
+
+    let role: String = get_next_arg!(args, role)?;
+    let role = (&*role).into();
+
+    let payload = SetUserRolePayload { id, role };
+    run_client_action(|client| client.set_user_role(payload));
+    Ok(())
+}
+
 // Connect to server
 fn connect() -> Option<SyncClient> {
     let options = client::Options::default();
-    let addr = "localhost:10001".first_socket_addr();
+    let addr = "127.0.0.1:10001".first_socket_addr();
 
     SyncClient::connect(addr, options).ok()
 }
@@ -156,6 +185,8 @@ where
             Ok(value) => println!("The server responded with: {:#?}", value),
             Err(error) => println!("The server responded with error: {:#?}", error),
         }
+    } else {
+        println!("Unable to connect");
     }
 }
 
