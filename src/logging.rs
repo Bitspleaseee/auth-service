@@ -6,7 +6,8 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
     base_config = match verbosity {
         0 => base_config.level(log::LevelFilter::Info),
 
-        1 => base_config.level(log::LevelFilter::Debug)
+        1 => base_config
+            .level(log::LevelFilter::Debug)
             .level_for("tokio_core", log::LevelFilter::Info)
             .level_for("tokio_reactor", log::LevelFilter::Info)
             .level_for("tokio_proto", log::LevelFilter::Info)
@@ -14,7 +15,8 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("mio", log::LevelFilter::Info)
             .level_for("tarpc", log::LevelFilter::Info),
 
-        2 => base_config.level(log::LevelFilter::Trace)
+        2 => base_config
+            .level(log::LevelFilter::Trace)
             .level_for("tokio_core", log::LevelFilter::Info)
             .level_for("tokio_reactor", log::LevelFilter::Info)
             .level_for("tokio_proto", log::LevelFilter::Info)
@@ -22,7 +24,7 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("mio", log::LevelFilter::Info)
             .level_for("tarpc", log::LevelFilter::Info),
 
-        _3_or_more => base_config.level(log::LevelFilter::Trace)
+        _3_or_more => base_config.level(log::LevelFilter::Trace),
     };
 
     // Separate file config so we can include year, month and day in file logs

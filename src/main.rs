@@ -37,7 +37,6 @@ use dotenv::dotenv;
 use error::{Error as IntError, ErrorKind as IntErrorKind};
 use failure::Error;
 use service::FutureServiceExt;
-use std::env;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tarpc::future::server::Options;
 use tokio_core::reactor;

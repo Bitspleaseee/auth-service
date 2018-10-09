@@ -61,6 +61,7 @@ service! {
     rpc deauthenticate(payload: Token) -> () | AuthError;
     rpc register(payload: RegisterUserPayload) -> AddUserPayload | AuthError;
     rpc get_user_role(payload: Token) -> Role | AuthError;
+    rpc set_user_role(payload: SetUserRolePayload) -> () | AuthError;
 }
 
 impl FutureService for AuthServer {
@@ -68,6 +69,7 @@ impl FutureService for AuthServer {
     type DeauthenticateFut = Result<(), AuthError>;
     type RegisterFut = CpuFuture<AddUserPayload, AuthError>;
     type GetUserRoleFut = Result<Role, AuthError>;
+    type SetUserRoleFut = CpuFuture<(), AuthError>;
 
     fn get_user_role(&self, token: Token) -> Self::GetUserRoleFut {
         debug!("Received get role request for token: {:?}", &token);
@@ -78,11 +80,10 @@ impl FutureService for AuthServer {
                 error!("Unable to read 'tokens': {}", e);
                 AuthError::InternalServerError
             })?.get(&token)
-            .map(|(_, role, _)| { 
-                trace!("Found token; role: {:?}", *role); 
+            .map(|(_, role, _)| {
+                trace!("Found token; role: {:?}", *role);
                 *role
-            })
-            .ok_or({
+            }).ok_or({
                 trace!("No token found");
                 AuthError::InvalidToken
             })
@@ -97,16 +98,17 @@ impl FutureService for AuthServer {
                 error!("Unable to write to 'tokens': {}", e);
                 AuthError::InternalServerError
             })?.remove(&token)
-            .ok_or({
-                AuthError::InvalidToken
-            })?;
+            .ok_or({ AuthError::InvalidToken })?;
 
         trace!("Found and removed token");
         Ok(())
     }
 
     fn authenticate(&self, payload: AuthPayload) -> Self::AuthenticateFut {
-        debug!("Received authentication request from: {}", &payload.username);
+        debug!(
+            "Received authentication request from: {}",
+            &payload.username
+        );
 
         let cloned_pool = self.db_pool.clone();
         let cloned_tokens = self.tokens.clone();
@@ -132,11 +134,11 @@ impl FutureService for AuthServer {
                         Ok(v) => {
                             trace!("Found user");
                             v
-                        },
+                        }
                         Err(e) => {
                             trace!("User not found");
-                            return Err(e.into())
-                        },
+                            return Err(e.into());
+                        }
                     };
 
                     // 'Pepper' the password
@@ -158,11 +160,11 @@ impl FutureService for AuthServer {
                                 Ok(v) => {
                                     trace!("Found user role");
                                     v
-                                },
+                                }
                                 Err(e) => {
                                     trace!("Failed to find user role");
-                                    return Err(e.into())
-                                },
+                                    return Err(e.into());
+                                }
                             };
 
                             // Wrap in a empty scope, so that as soon as we're done writing
@@ -172,7 +174,6 @@ impl FutureService for AuthServer {
                             let token = Token::new(base64::encode(&random_bytes[..]));
                             let now = chrono::offset::Utc::now();
                             {
-
                                 let token_clone = token.clone();
                                 cloned_tokens
                                     .write()
@@ -230,8 +231,8 @@ impl FutureService for AuthServer {
                     match db::fetch_user(&con, &username) {
                         Ok(_) => {
                             trace!("The username already exists");
-                            return Err(AuthError::ExistingUser)
-                        },
+                            return Err(AuthError::ExistingUser);
+                        }
                         Err(_) => {}
                     };
 
@@ -263,8 +264,39 @@ impl FutureService for AuthServer {
                             .try_into()
                             .map_err(|_| AuthError::InvalidUsername)
                             .map(move |name| (id.into(), name))
-                    }).map(|(id, username)| {trace!("Returning user payload"); AddUserPayload { id, username }})
+                    }).map(|(id, username)| {
+                        trace!("Returning user payload");
+                        AddUserPayload { id, username }
+                    })
                 })
+        });
+
+        self.pool.spawn(f)
+    }
+
+    fn set_user_role(&self, payload: SetUserRolePayload) -> Self::SetUserRoleFut {
+        debug!("Received set user role request from: {}", &payload.id);
+
+        let cloned_pool = self.db_pool.clone();
+
+        let f = futures::lazy(move || {
+            cloned_pool
+                .get()
+                .map_err(|e| {
+                    error!("Unable to get a database connection from the pool: {}", e);
+                    AuthError::InternalServerError
+                }).and_then(
+                    |con| match db::update_role(&con, *payload.id, payload.role.into()) {
+                        Ok(_) => {
+                            trace!("Successfully update role");
+                            Ok(())
+                        }
+                        Err(e) => {
+                            error!("Error updating role: {}", e);
+                            Err(AuthError::InternalServerError)
+                        }
+                    },
+                )
         });
 
         self.pool.spawn(f)
