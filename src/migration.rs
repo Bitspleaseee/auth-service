@@ -4,10 +4,10 @@ use diesel::sql_query;
 use crate::db::establish_connection;
 use crate::{IntErrorKind, IntResult};
 
-pub fn run(database_url: &str) -> IntResult<()> {
+pub fn run() -> IntResult<()> {
     let con = establish_connection();
 
-    sql_query(
+    let _ = sql_query(
         r#"CREATE TABLE users (
 
   id            INT UNSIGNED AUTO_INCREMENT NOT NULL,
@@ -21,9 +21,9 @@ pub fn run(database_url: &str) -> IntResult<()> {
   PRIMARY KEY (id)
 );"#,
     ).execute(&con)
-    .map_err(|_| IntErrorKind::QueryError)?;
+    .map_err(|_| IntErrorKind::QueryError);
 
-    sql_query(
+    let _ = sql_query(
         r#"CREATE TABLE roles (
 
   id            INT UNSIGNED NOT NULL,
@@ -33,7 +33,7 @@ pub fn run(database_url: &str) -> IntResult<()> {
   FOREIGN KEY(id) REFERENCES users(id)
 );"#,
     ).execute(&con)
-    .map_err(|_| IntErrorKind::QueryError)?;
+    .map_err(|_| IntErrorKind::QueryError);
 
     Ok(())
 }

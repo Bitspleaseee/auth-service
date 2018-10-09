@@ -98,7 +98,7 @@ pub fn run() -> Result<(), Error> {
     let migrate: u64 = cmd_arguments.occurrences_of("migrate");
     if migrate > 0 {
         info!("Running db migration");
-        migration::run(&database_url)?;
+        let _ = migration::run();
     }
 
     // Start
