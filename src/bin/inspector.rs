@@ -17,6 +17,7 @@ use rustyline::Editor;
 use std::convert::{TryFrom, TryInto};
 use std::default::Default;
 use std::fmt::Debug;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use tarpc::sync::client;
 use tarpc::sync::client::ClientExt;
@@ -167,10 +168,20 @@ fn run_set_user_role<'a>(mut args: impl Iterator<Item = &'a str>) -> Fallible<()
 
 // Connect to server
 fn connect() -> Option<SyncClient> {
-    let options = client::Options::default();
-    let addr = "127.0.0.1:10001".first_socket_addr();
+    let address = match std::env::var("AUTH_ADDRESS") {
+        Ok(value) => value
+            .to_socket_addrs()
+            .expect("Unable to perorm AUTH_ADDRESS resolving")
+            .next()
+            .expect(&format!("Unable to resolve '{}'", value)),
+        Err(_) => {
+            println!("AUTH_ADDRESS is not set, using '127.0.0.1:10001'");
+            SocketAddr::from(([127, 0, 0, 1], 10001))
+        }
+    };
 
-    SyncClient::connect(addr, options).ok()
+    let options = client::Options::default();
+    SyncClient::connect(address, options).ok()
 }
 
 // Run a action on the server and print the result
