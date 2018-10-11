@@ -60,7 +60,7 @@ service! {
     rpc authenticate(payload: AuthPayload) -> Token | AuthError;
     rpc deauthenticate(payload: Token) -> () | AuthError;
     rpc register(payload: RegisterUserPayload) -> AddUserPayload | AuthError;
-    rpc get_user_role(payload: Token) -> Role | AuthError;
+    rpc get_user(payload: Token) -> (UserId, Role) | AuthError;
     rpc set_user_role(payload: SetUserRolePayload) -> () | AuthError;
 }
 
@@ -68,10 +68,10 @@ impl FutureService for AuthServer {
     type AuthenticateFut = CpuFuture<Token, AuthError>;
     type DeauthenticateFut = Result<(), AuthError>;
     type RegisterFut = CpuFuture<AddUserPayload, AuthError>;
-    type GetUserRoleFut = Result<Role, AuthError>;
+    type GetUserFut = Result<(UserId, Role), AuthError>;
     type SetUserRoleFut = CpuFuture<(), AuthError>;
 
-    fn get_user_role(&self, token: Token) -> Self::GetUserRoleFut {
+    fn get_user(&self, token: Token) -> Self::GetUserFut {
         debug!("Received get role request for token: {:?}", &token);
 
         self.tokens
@@ -80,10 +80,10 @@ impl FutureService for AuthServer {
                 error!("Unable to read 'tokens': {}", e);
                 AuthError::InternalServerError
             })?.get(&token)
-            .map(|(_, role, _)| {
+            .map(|(user_id, role, _)| {
                 trace!("Found token; role: {:?}", *role);
-                *role
-            }).ok_or({
+                (*user_id, *role)
+            }).ok_or_else(|| {
                 trace!("No token found");
                 AuthError::InvalidToken
             })
